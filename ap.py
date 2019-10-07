@@ -26,7 +26,7 @@ files = {}  # 요청 서버에 대응하는 파일군집 저장
 lock = threading.Lock() # 스레드 락을 위한
 
 root = os.getcwd() +"/"
-cache = None
+#cache = None
 cach_dir = root + 'cache/'
 
 # host = 'localhost'
@@ -103,7 +103,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             sgtmp = adaptationset.find(ft+'SegmentTemplate')
             if sgtmp != None:# 1번째 전체 타일에 대한 파일
                 fnames = num.findall(sgtmp.attrib.get('media').replace("$Number$", "0"))[0]
-                arr[fnames[0]]=[0,0,0,0]
+                arr[fnames[0]]=[0,0,0,0,0]
                 mpd[0].append('') # 이건 퀄리티
                 mpd.append(arr)
                 continue
@@ -111,7 +111,7 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
                 sgtmp = rep.find(ft+'SegmentTemplate')
                 if sgtmp != None:
                     fnames = list(num.findall(sgtmp.attrib.get('media').replace("$Number$", "0"))[0]) # 
-                    arr[fnames[0]]=[0,0,0,0]    # 클라이언트 최초 / 다운로드(맥시멈) / 현재 다운로드 되는 인덱스 / 다운로드 진행중인 스레드
+                    arr[fnames[0]]=[0,0,0,0,0]    # 클라이언트 최초 / 다운로드(맥시멈) / 현재 다운로드 되는 인덱스 / 다운로드 목표 인덱스 / 다운로드 진행중인 스레드
             if len(arr.keys()):
                 mpd[0].append('') # 이건 퀄리티
                 mpd.append(arr) #{L:0,M:0,H:0}  #마지막으로 로드된 인덱스
@@ -119,33 +119,35 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         self.print_file(query+path)
         print("요청된 데이터(.mpd)를 처리함",query,path)
 
-    def get_m4s_files(self,query,path_mpd,qul,tile,sindex,eindex):
+    def get_m4s_files(self,query,path_mpd,qul,tile):
         global files
         roots = path_mpd.split('/')
         del roots[len(roots)-1]
         roots = '/'.join(roots)+'/'
-        
-        data = files[query+path_mpd]
-        print('다운로드 스레드 동작 : ',tile,sindex,eindex)
-        for i in range(sindex,eindex+1):
-            if qul != data[0][tile] or not data[tile][qul][3] and data[tile][qul][1] >= i:
-                print('다운로드 스레드 중도 정지 : ',qul, data[0][tile],data[tile][qul][3], data[tile][qul][1])
-                data[tile][qul][2] = -1         # 스레드
+
+        qarr = files[query+path_mpd][tile][qul] # data[fnames[1]][fnames[0]]
+        if tile==2:
+            print('다운로드 스레드 동작 : ',tile,query)
+        i = qarr[2]
+        while qarr[3] == qarr[2]:
+            if qul != data[0][tile] or not qarr[4] or qarr[0]>=i:
+                qarr[2] = -1
                 break
-            data[tile][qul][2] = i          # 다운로드 중임을 알림
+            qarr[2] = i # 다운로드 중임을 알림
             #print('Downloading....',query+roots+qul+'_dash_track'+str(tile)+'_'+str(i) + '.m4s')
             # print(str(tile)+'_'+str(i) + '.m4s',end=' |')
             url = query+roots+qul+'_dash_track'+str(tile)+'_'+str(i) + '.m4s'
+            if tile==2:
+                print('다운로드 시작... : ',)
             if not self.is_cache_file(url):
-            
                 if not self.get_file(url):
-                
                     break # end of download
-            
-            data[tile][qul][1] = i          # 최신 다운로드 업데이트
-            data[tile][qul][2] = -1         # 다운로드 왼료
-        data[tile][qul][3] = -1             # 스레드 중지 알림
-        print('다운로드 스레드 end : ',tile,data[tile][qul])
+            qarr[1] = i          # 최신 다운로드 업데이트
+            qarr[2] = -1         # 다운로드 왼료
+        qarr[4] = 0             # 스레드 중지 알림
+        if tile==2:
+            print('다운로드 스레드 완료 : ',tile,qarr)
+        #print('다운로드 스레드 end : ',tile,qarr)
 
     def get_m4s(self,query,path_mpd,m4s):
         global files
@@ -163,28 +165,28 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             lock.acquire()# 락
             data[0][fnames[1]] = fname[0]   # 해당타일의 퀄리티 적용
             data[fnames[1]][fnames[0]][1] = data[fnames[1]][fnames[0]][2] = fnames[2]  # 해당하는 파일의 다운로드 알림
-            if data[fnames[1]][fnames[0]][3]:           # 다운로드 인덱스가 진행중이면
-                data[fnames[1]][fnames[0]][3] = 0      # 중지
+            if data[fnames[1]][fnames[0]][4]:           # 다운로드 인덱스가 진행중이면
+                data[fnames[1]][fnames[0]][4] = 0      # 중지
             lock.release() #락 해제
             self.get_file(query + m4s)      # 다운로드 요청
             #data[fnames[1]][fnames[0]][3] = threading.Thread(target=self.get_file, args=(query + m4s))
         self.print_file(query+m4s)
-        
-        if cache != None:
+        if hosts[self.address_string()][3] != None:
+            cache = hosts[self.address_string()][3]
             buffsize = int((cache[2] - cache[1]) / (len(data)-1))#버퍼 사이즈
             if buffsize:
-                max = data[fnames[1]][fnames[0]][1] + buffsize
-                if max <= fnames[2]+buffsize:
-                    t = data[fnames[1]][fnames[0]][3] = threading.Thread(target=self.get_m4s_files, args=(query,path_mpd,fnames[0],fnames[1],data[fnames[1]][fnames[0]][1],max))
+                data[fnames[1]][fnames[0]][3] = data[fnames[1]][fnames[0]][1] + buffsize
+                if not data[fnames[1]][fnames[0]][4]:
+                    t = data[fnames[1]][fnames[0]][4] = threading.Thread(target=self.get_m4s_files, args=(query,path_mpd,fnames[0],fnames[1]))
                     t.start()
                 #print(query,path_mpd,fnames[0],fnames[1],data[fnames[1]][fnames[0]][1],max)
                     
 
     def do_GET(self):
-        global hosts,cache,cache_qul
+        global hosts,cache_qul
         parsed_path=urlparse(self.path)
 
-        print("요청 수신",self.path)
+        #print("요청 수신",self.path)
         if parsed_path.path == '/':
             self.response(200,{'Content-type':'text/html'})
             self.wfile.write("올바르지 않은 접근".encode('utf-8'))
@@ -202,9 +204,10 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
             elif cache_qul.match(query):
                 cache = cache_qul.findall(query)[0]
                 cache=(int(cache[0]),int(cache[1]),int(cache[2]))
+                hosts[self.address_string()][3] = cache
                 query = hosts[self.address_string()][0]
             else : # root file load
-                hosts[self.address_string()] = [query,roots,fname]
+                hosts[self.address_string()] = [query,roots,fname,None]
 
             if fname[fname.rindex('.'):] =='.mpd':
                 self.get_mpd('http://'+query,parsed_path.path)
@@ -217,13 +220,16 @@ class MyHandler(http.server.BaseHTTPRequestHandler):
         return None
 
 def print_data():
+    global hosts
     while 1:
         time.sleep(5)
-        print(files)
-
+        #hosts[self.address_string()][3]
+        if len(hosts):
+            for i in hosts.keys():
+                print(i,hosts[i][3], end="")
+            print()
 s=http.server.HTTPServer((host,8080),MyHandler)
 t=threading.Thread(target=print_data)
 t.start()
 print("server running!")
 s.serve_forever()
-
