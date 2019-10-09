@@ -75,17 +75,17 @@ class DownloadQueue(list): # 1 호스트 대응 url
                 if time.time() - self._sleept > 1000 * 30:
                     break
                 continue
-            if self._sleept:
-                self._sleept = 0
+            self._sleept = 0
             o = self.dequeue()# 첫 항목
-            get_file(o)
+            if not get_file(o,tout=0.1):
+                self.is_run = False
+                self.clear()
+                break
             #func(o) # callboack to obj
             if self.priority > 0: #우선순위 처리작업
                 if self.callback:
                     self.callback(o)
                 self.priority-=1
-        print("End of thread")
-
 
 db = {}     # 요청된 데이터를 캐싱하고 있는
 root = os.getcwd() +"/"
@@ -117,9 +117,6 @@ hosts = {}   # 요청을 호출한 클라이언트 데이터
 files = {}  # 요청 서버에 대응하는 파일군집 저장
 # lock = threading.Lock() # 스레드 락을 위한
 
-
-# host = 'localhost'
-host = ""
 num = re.compile(r'([a-zA-Z0-9_]+)_dash_track([0-9]+)_([0-9]+)')
 cache_qul = re.compile(r'cache=([0-9]{3})([0-9]{3})([0-9]{3})')
 
@@ -209,6 +206,11 @@ class AP(http.server.BaseHTTPRequestHandler):
             url = query+roots+qul+'_dash_track'+str(tile)+'_'+str(i) + '.m4s'
             files[query]["_cache"].enqueue(url) # 스레딩에 넣음
             data[1] = i          # 최신 다운로드 업데이트
+    def change_buffer_size(self,max,client=0,src=None):
+        if src:
+            hosts[src][3]=[client,max]
+        else :
+            hosts[self.address_string()][3]=[client,max]
 
     def get_m4s(self,query,path_mpd,m4s):
         global files
@@ -227,7 +229,7 @@ class AP(http.server.BaseHTTPRequestHandler):
 
         if hosts[self.address_string()][3] != None:#캐시로딩중
             cache=hosts[self.address_string()][3]
-            buffsize = int((cache[2] - cache[1]) / (len(files[query][path_mpd])-1))#버퍼 사이즈(서버측))
+            buffsize = int((cache[1] - cache[0]) / (len(files[query][path_mpd])-1))#버퍼 사이즈(서버측))
             if buffsize:
                 max = fnames[2] + buffsize #지금 진행되어야 하는 서버측 버퍼크기 계산
                 data[1] = max # 실시간 데이터에 맥스값 지정
@@ -252,10 +254,12 @@ class AP(http.server.BaseHTTPRequestHandler):
                 query = hosts[self.address_string()][0]
             elif cache_qul.match(query):
                 cache = cache_qul.findall(query)[0]
-                cache=(int(cache[0]),int(cache[1]),int(cache[2]))
-                hosts[self.address_string()][3]=cache
+                if not hosts[self.address_string()][3]:
+                    print("클라이언트 버퍼링 크기:",cache[0])
+                    hosts[self.address_string()][3]=[int(cache[1]),int(cache[2])]
+                elif int(cache[2]) != hosts[self.address_string()][3][1] or int(cache[1]) != hosts[self.address_string()][3][0]:
+                    hosts[self.address_string()][3]=[int(cache[1]),int(cache[2])]
                 query = hosts[self.address_string()][0]
-                print("클라이언트 버퍼링 크기:",cache[0])
             else : # root file load
                 hosts[self.address_string()] = [query,roots,fname,None]
             if fname[fname.rindex('.'):] =='.mpd':
@@ -275,32 +279,22 @@ class AP(http.server.BaseHTTPRequestHandler):
 
 
 def print_data():
-    global hosts
+    global hosts,files,server
+    print("server running!")
     while 1:
         time.sleep(5)
-        if len(hosts):
-            for i in hosts.keys():
-                print(i,hosts[i][3], end="")
-            print()
-            print("현재 서버 다운로드 상태 [")
-            for i in files.keys():
-                #print(i,files[i])
-                for j in files[i]:
-                    if j == "_cache":
-                        print("캐시상태 (%d): %s"%(len(files[i][j]),i))
-                        continue
-                    k = files[i][j]
-                    print(k[1],end="")
-                    '''
-                    for j in range(len(k)):
-                        keys = k[j].keys()
-                        for l in keys:
-                    '''     
-                    print()
-            print("]")
+        for i in files.keys():
+            for j in files[i]:
+                if j == "_cache":
+                    print("캐시상태 (%s): %d"%(i,len(files[i][j])))
+                    continue
+                k = files[i][j]
+                print(k[1],end="")
+                print()
+        print("]")
 
-s=http.server.HTTPServer((host,8080),AP)
+port = int(input("in port :"))
+server=http.server.HTTPServer(("",port),AP)
 t=threading.Thread(target=print_data)
 t.start()
-print("server running!")
-s.serve_forever()
+server.serve_forever()
