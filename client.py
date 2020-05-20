@@ -26,7 +26,7 @@ class Log():
         if not(os.path.isdir(self.dir)):
             os.makedirs(os.path.join(self.dir))
         self.f = open(self.dir + self.fname,'a')
-    
+
     def __del__(self):
         print("%s 파일을 로그로 저장"%(self.fname))
         self.f.close()
@@ -100,7 +100,7 @@ def get_mpd(url):    # 호스트 / 경로로 mpd 데이터 가져오기
         for rep in reps:# 퀄리티 index
             sgtmp = rep.find(ft+'SegmentTemplate')# 최근에 또 바꿔서 한번 더 고려해야 함,.
             if sgtmp != None:
-                fnames = list(num.findall(sgtmp.attrib.get('media').replace("$Number$", "0"))[0]) # 
+                fnames = list(num.findall(sgtmp.attrib.get('media').replace("$Number$", "0"))[0]) #
                 arr[fnames[0]]=[0,0]    # 클라이언트 마지막 요청 / 다운로드 예정 맥시멈
                 arr["init"] = sgtmp.get("initialization")
         if len(arr.keys()):
@@ -123,7 +123,7 @@ def get_m4s(url):
         hashlib.md5(get_file(roots + mpd[m]['init'])).hexdigest()
     time2 = time.time()
     log('init 파일 로드 %0.3fms' % ((time2-time1)*1000.0))
-    
+
     index = 1
     cache_now = 0
     cache_ac = 2
@@ -150,13 +150,13 @@ def get_m4s(url):
                 print("[%d] Now play time : %d/%d"%(index,now/1000,cache_now),end="\tClear cache\n")
             else :
                 print("[%d] Now play time : %d"%(index,now/1000),end="\tNone  cache\n")
-        
+
         if now/1000 > mpd[0][0][1]:
             print("플레이어 종료")
             break
     time2 = time.time()
     log('미디어 플레이타임 %0.3fms' % ((time2-time1)*1000.0))
-    
+
     return True
 
 
