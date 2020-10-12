@@ -21,7 +21,7 @@ cach_dir = root + 'cache/'
 class Log():
 
     def __init__(self):
-        self.fname = time.strftime('%Y-%m-%d_%H:%M', time.localtime(time.time())) + "_%d" %(os.getpid())
+        self.fname = time.strftime('%Y-%m-%d_%H_%M_%S', time.localtime(time.time())) + "_%d" %(os.getpid())
         self.dir = os.getcwd() +"/logs/"
         if not(os.path.isdir(self.dir)):
             os.makedirs(os.path.join(self.dir))
@@ -61,10 +61,14 @@ def log(str,end="\n"):
 @timing
 def get_file(url,tout=None):
     data = requests.get(url,timeout=tout)
+    while data.status_code == 202:
+        time.sleep(1)
+        data = requests.get(url,timeout=tout)
     if data.status_code == 404:
         return False
     #log(hashlib.md5(data.content).hexdigest()) #헤시 파일명
     return data.content
+
 def get_duration_time(duration):
     time = [int(float(x)) for x in duration]
     i = 0
@@ -137,8 +141,9 @@ def get_m4s(url):
             for i in range(index+cache_now,index+cache_ac):
                 for j in range(1,len(mpd)):
                     k = [m for m in mpd[j].keys()][-2]
+                    length = len(mpd) -1
                     url =roots+k+'_dash_track'+str(j)+'_'+str(i) + '.m4s'
-                    url+="?cache=%03d%03d%03d&host=%s"%(cache_now * len(mpd),cache_ac * len(mpd),cache_max * len(mpd), qury)
+                    url+="?cache=%03d%03d%03d"%(cache_now * length,cache_ac * length,cache_max * length)
                     get_file(url)
             cache_now = cache_ac
         for i in range(index,st+1):
@@ -161,7 +166,8 @@ def get_m4s(url):
 
 
 process_s = time.time()
-url = input("url>")
+# url = input("url>")
+url = "http://10.42.0.1:8080/203.247.240.208/rb.10x8/rb.mpd"
 if get_mpd(url):
     #print(mpd)
     get_m4s(url)
